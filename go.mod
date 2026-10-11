@@ -3,9 +3,9 @@ module github.com/lemmego/seo
 go 1.27
 
 require (
-	github.com/lemmego/api v0.1.44
-	github.com/lemmego/apptest v0.0.0
-	github.com/lemmego/inertia v0.1.9
+	github.com/lemmego/api v0.1.45
+	github.com/lemmego/apptest v0.1.0
+	github.com/lemmego/inertia v0.1.11
 )
 
 require (
@@ -89,5 +89,3 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.46.1 // indirect
 )
-
-replace github.com/lemmego/apptest => ../apptest
