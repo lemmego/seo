@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/lemmego/api v0.2.0
-	github.com/lemmego/apptest v0.2.0
+	github.com/lemmego/apptest v0.2.1
 	github.com/lemmego/inertia v0.2.0
 )
 
@@ -36,7 +36,7 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -45,7 +45,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
-	github.com/lemmego/auth v0.3.0 // indirect
+	github.com/lemmego/auth v0.3.1 // indirect
 	github.com/lemmego/fsys v0.1.0 // indirect
 	github.com/lemmego/migration v0.1.23 // indirect
 	github.com/lib/pq v1.10.9 // indirect
