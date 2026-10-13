@@ -180,6 +180,62 @@ is derived rather than typed, so no validator can reject it, and a reserved
 word reaches the database as a constraint violation at insert time — long
 after the person has finished writing.
 
+## Reading somebody else's metadata: `seo/opengraph`
+
+The rest of this module emits Open Graph tags for your pages. This reads them
+from theirs, so a submitted link can be shown as a card rather than as a URL:
+
+```go
+fetcher := opengraph.New(opengraph.Options{})
+preview, err := fetcher.Fetch(ctx, submittedURL)
+// preview.Title, .Description, .Image, .SiteName, .Type, and .URL after redirects
+```
+
+A page with no metadata returns an empty `Preview` and **no error** — that is
+an ordinary page, and the caller shows the URL it would have shown anyway.
+
+### This is an SSRF surface, and that is the whole design
+
+Fetching a URL somebody typed means making a request from inside your network
+to a destination they chose. Four things, and the first is the one most
+implementations get wrong:
+
+- **The address is checked at dial time, not before.** A hostname is not a
+  destination. Resolving a name, checking the result, and then handing the
+  *name* to a dialer leaves a window in which the dialer's own lookup returns
+  something else — a DNS rebind. The check runs in `net.Dialer.Control`, after
+  resolution and before connect, on the address the socket will actually use,
+  so there is no second lookup to race.
+- **Every redirect hop is checked**, because each one dials again. A public
+  URL that redirects to `http://169.254.169.254` is the ordinary shape of this
+  attack, and that address returns cloud credentials on AWS, GCP, Azure and
+  DigitalOcean.
+- **Connections are not pooled.** A reused connection was checked when it was
+  first dialled, and the next fetch to that host would skip `Control`
+  entirely.
+- **`http` and `https` only**, with a byte cap, a timeout and a redirect cap —
+  a URL that streams forever is as effective as one that reaches somewhere
+  private.
+
+Blocked: loopback, private, link-local, unspecified, multicast, CGNAT, NAT64,
+the reserved and documentation ranges, and IPv4-mapped IPv6 forms of all of
+them — `::ffff:127.0.0.1` is loopback, and every `Is…` predicate answers false
+for it until it is unmapped.
+
+`AllowPrivateAddresses` turns the guard off. It exists so this package's own
+tests can reach an `httptest` server, and there is deliberately no way to
+allow a single address: the dangerous setting should not be the one you reach
+by narrowing a safe one.
+
+### What it does not do
+
+It does not run JavaScript, so a page that writes its own meta tags from a
+script unfurls to whatever is in the served HTML — which is what every other
+unfurler sees, and why sites that care ship the tags server-side.
+
+It adds **no modules**: `golang.org/x/net` was already in this module's graph,
+and the parser is a tokenizer that stops at `</head>` rather than a tree.
+
 ## Deliberate omissions
 
 No OG image generation, no hreflang, no AMP. Each is a project rather than a

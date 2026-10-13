@@ -6,6 +6,7 @@ require (
 	github.com/lemmego/api v0.2.0
 	github.com/lemmego/apptest v0.2.1
 	github.com/lemmego/inertia v0.2.0
+	golang.org/x/net v0.50.0
 )
 
 require (
@@ -68,7 +69,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
-	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
