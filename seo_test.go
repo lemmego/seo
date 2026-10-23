@@ -306,10 +306,19 @@ func TestShareReachesTheRootTemplate(t *testing.T) {
 	}
 }
 
-// Sitemap must always serve an index, even when every source fits in one
-// shard. Switching from a bare urlset to an index later changes URLs a
-// crawler has already fetched, for no benefit.
-func TestSitemapAlwaysServesAnIndex(t *testing.T) {
+// A site that fits in one file gets one file, and the pages are in it.
+//
+// This used to serve an index unconditionally, reasoning that changing shape
+// later would move URLs a crawler had already fetched. That reasoning does
+// not hold — /sitemap.xml keeps its own URL either way, and the shard routes
+// go on serving whether the index references them or not, which the test
+// below asserts.
+//
+// What the always-index cost was legibility, and that turned out to matter: a
+// site with eighteen URLs showed nine file names and not one page, so the
+// obvious check — "is my new article in the sitemap?" — answered no for
+// everybody who opened it.
+func TestSitemapIsOneFileWhileEverythingFits(t *testing.T) {
 	sitemap := &Sitemap{Sources: []Source{&fixedSource{name: "profiles", urls: []URL{
 		{Loc: "/@ada", LastMod: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Priority: 0.8},
 	}}}}
@@ -321,19 +330,26 @@ func TestSitemapAlwaysServesAnIndex(t *testing.T) {
 		}),
 	)
 
-	a.Get("/sitemap.xml").Send().AssertStatus(200).
-		AssertSee("<sitemapindex").
-		AssertSee("https://productshore.com/sitemap/profiles-1.xml")
-
-	a.Get("/sitemap/profiles-1.xml").Send().AssertStatus(200).
+	body := a.Get("/sitemap.xml").Send().AssertStatus(200).
 		AssertSee("<urlset").
 		AssertSee("<loc>https://productshore.com/@ada</loc>").
 		AssertSee("<lastmod>2026-03-01T00:00:00Z</lastmod>").
+		Text()
+	if strings.Contains(body, "<sitemapindex") {
+		t.Errorf("a site that fits in one file was sharded:\n%s", body)
+	}
+
+	// The shard keeps serving, so a crawler holding its URL from before this
+	// change is not sent to a 404.
+	a.Get("/sitemap/profiles-1.xml").Send().AssertStatus(200).
+		AssertSee("<urlset").
+		AssertSee("<loc>https://productshore.com/@ada</loc>").
 		AssertSee("<priority>0.8</priority>")
 }
 
-// A source with no rows yet still gets one shard, so the URL in the index
-// does not 404 the first time a crawler follows it.
+// A source with no rows yet still gets one shard, so the URL does not 404 the
+// first time a crawler follows it — whether it found that URL in an index or
+// kept it from an earlier crawl.
 func TestSitemapServesAnEmptySourceWithoutA404(t *testing.T) {
 	sitemap := &Sitemap{Sources: []Source{&fixedSource{name: "launches"}}}
 
@@ -344,8 +360,7 @@ func TestSitemapServesAnEmptySourceWithoutA404(t *testing.T) {
 		}),
 	)
 
-	a.Get("/sitemap.xml").Send().AssertStatus(200).
-		AssertSee("sitemap/launches-1.xml")
+	a.Get("/sitemap.xml").Send().AssertStatus(200).AssertSee("<urlset")
 	a.Get("/sitemap/launches-1.xml").Send().AssertStatus(200).AssertSee("<urlset")
 }
 

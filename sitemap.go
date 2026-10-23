@@ -97,6 +97,80 @@ func (s *Sitemap) shards(ctx context.Context, source Source) (int, error) {
 	return shards, nil
 }
 
+// total counts every URL across every source.
+//
+// Cheap because Count is a COUNT(*) per source and there are a handful of
+// them — and it is only asked once per request for /sitemap.xml, which is
+// cached when CacheTTL says so.
+func (s *Sitemap) total(ctx context.Context) (int, error) {
+	total := 0
+	for _, source := range s.Sources {
+		count, err := source.Count(ctx)
+		if err != nil {
+			return 0, err
+		}
+		total += count
+	}
+	return total, nil
+}
+
+// everything collects every URL from every source into one file.
+//
+// Only called when total has already said they fit, so the slice is bounded
+// by maxPerFile — the paging contract the Source interface exists for is
+// still honoured, a page at a time, rather than asking a source for all of
+// its rows at once.
+func (s *Sitemap) everything(ctx context.Context, base string) (urlSet, error) {
+	set := urlSet{XMLNS: sitemapNS}
+	limit := s.maxPerFile()
+	for _, source := range s.Sources {
+		for offset := 0; ; offset += limit {
+			page, err := source.Page(ctx, offset, limit)
+			if err != nil {
+				return urlSet{}, err
+			}
+			if len(page) == 0 {
+				break
+			}
+			for _, u := range page {
+				set.URLs = append(set.URLs, sitemapURL{
+					// Absolute, the same way the shard handler writes them.
+					// A sitemap carrying relative URLs is rejected outright.
+					Loc:        absolute(base, u.Loc),
+					LastMod:    formatLastMod(u.LastMod),
+					ChangeFreq: u.ChangeFreq,
+					Priority:   formatPriority(u.Priority),
+				})
+			}
+			if len(page) < limit {
+				break
+			}
+		}
+	}
+	return set, nil
+}
+
+// newest is the most recent LastMod in one shard, for the index entry.
+//
+// It reads the shard it is describing rather than keeping a separate record,
+// which costs a page read per shard on a sitemap large enough to be sharded.
+// That is the trade: an index entry with no lastmod tells a crawler nothing,
+// and a wrong one is worse than none.
+func (s *Sitemap) newest(ctx context.Context, source Source, shard int) (time.Time, error) {
+	limit := s.maxPerFile()
+	page, err := source.Page(ctx, (shard-1)*limit, limit)
+	if err != nil {
+		return time.Time{}, err
+	}
+	var newest time.Time
+	for _, u := range page {
+		if u.LastMod.After(newest) {
+			newest = u.LastMod
+		}
+	}
+	return newest, nil
+}
+
 type sitemapIndex struct {
 	XMLName  xml.Name          `xml:"sitemapindex"`
 	XMLNS    string            `xml:"xmlns,attr"`
@@ -105,6 +179,10 @@ type sitemapIndex struct {
 
 type sitemapIndexRef struct {
 	Loc string `xml:"loc"`
+	// LastMod is what tells a crawler which shard is worth re-fetching. An
+	// index without it says only that nine files exist, so a crawler holding
+	// the previous copy learns nothing and has to guess.
+	LastMod string `xml:"lastmod,omitempty"`
 }
 
 type urlSet struct {
@@ -135,7 +213,32 @@ func (s *Sitemap) Routes(a app.App) {
 		return err
 	})
 
+	// Flat while the whole site fits in one file, an index once it does not.
+	//
+	// This used to be an index always, reasoning that changing shape later
+	// would move URLs a crawler had already fetched. That reasoning does not
+	// hold: /sitemap.xml keeps its own URL either way, and the shard routes
+	// below go on serving whether or not the index still references them —
+	// so nothing a crawler holds stops working.
+	//
+	// What an always-index costs is legibility, and that turns out to matter.
+	// Opening /sitemap.xml on a site with eighteen URLs showed nine file
+	// names and not one page, so the obvious check — "is my new article in
+	// the sitemap?" — answered no for everybody who tried it. A format whose
+	// own author cannot read it is one nobody audits.
 	a.Router().Get("/sitemap.xml", func(c app.Context) error {
+		total, err := s.total(c.RequestContext())
+		if err != nil {
+			return err
+		}
+		if total <= s.maxPerFile() {
+			set, err := s.everything(c.RequestContext(), base)
+			if err != nil {
+				return err
+			}
+			return writeXML(c, set)
+		}
+
 		index := sitemapIndex{XMLNS: sitemapNS}
 		for _, source := range s.Sources {
 			shards, err := s.shards(c.RequestContext(), source)
@@ -143,17 +246,22 @@ func (s *Sitemap) Routes(a app.App) {
 				return err
 			}
 			for n := 1; n <= shards; n++ {
-				index.Sitemaps = append(index.Sitemaps, sitemapIndexRef{
+				ref := sitemapIndexRef{
 					Loc: fmt.Sprintf("%s/sitemap/%s-%d.xml", base, source.Name(), n),
-				})
+				}
+				if newest, err := s.newest(c.RequestContext(), source, n); err == nil {
+					ref.LastMod = formatLastMod(newest)
+				}
+				index.Sitemaps = append(index.Sitemaps, ref)
 			}
 		}
 		return writeXML(c, index)
 	})
 
-	// Always an index, even when every source fits in one shard. Switching
-	// from a bare urlset to an index later changes URLs a crawler has
-	// already fetched, for no benefit.
+	// The shards serve whether or not /sitemap.xml currently references
+	// them. A small site is served flat and never mentions these, but a
+	// crawler that fetched one before the site shrank — or before this
+	// changed shape — keeps a working URL rather than finding a 404.
 	//
 	// The shard is one path segment — "profiles-1.xml" — rather than
 	// /sitemap-{name}-{n}.xml, because net/http.ServeMux requires a wildcard
