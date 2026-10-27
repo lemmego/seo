@@ -215,17 +215,16 @@ func (s *Sitemap) Routes(a app.App) {
 
 	// Flat while the whole site fits in one file, an index once it does not.
 	//
-	// This used to be an index always, reasoning that changing shape later
-	// would move URLs a crawler had already fetched. That reasoning does not
-	// hold: /sitemap.xml keeps its own URL either way, and the shard routes
-	// below go on serving whether or not the index still references them —
-	// so nothing a crawler holds stops working.
+	// Changing shape as the site grows is safe: /sitemap.xml keeps its own
+	// URL either way, and the shard routes below go on serving whether or not
+	// the index still references them, so nothing a crawler already holds
+	// stops working.
 	//
-	// What an always-index costs is legibility, and that turns out to matter.
-	// Opening /sitemap.xml on a site with eighteen URLs showed nine file
-	// names and not one page, so the obvious check — "is my new article in
-	// the sitemap?" — answered no for everybody who tried it. A format whose
-	// own author cannot read it is one nobody audits.
+	// Staying an index at every size would cost legibility, which matters
+	// more than it sounds. On a site with eighteen URLs, /sitemap.xml would
+	// show nine file names and not one page — so the obvious check, "is my
+	// new article in the sitemap?", answers no for anyone who looks. A format
+	// nobody can read is one nobody audits.
 	a.Router().Get("/sitemap.xml", func(c app.Context) error {
 		total, err := s.total(c.RequestContext())
 		if err != nil {
