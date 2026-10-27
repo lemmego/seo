@@ -51,7 +51,7 @@ Two steps. Register the provider:
 &seo.Provider{
     Defaults: seo.Defaults{
         BaseURL:  config.MustEnv("APP_URL", "http://localhost:8080"),
-        SiteName: "Productshore",
+        SiteName: "Acme",
         NoIndex:  config.MustEnv("APP_ENV", "development") != "production",
     },
     Sitemap: &seo.Sitemap{
@@ -106,8 +106,8 @@ seo.Meta{JSONLD: []any{
 ```
 
 Each value is marshalled into its own `<script type="application/ld+json">`.
-This package deliberately does **not** model schema.org: pass your own structs
-or a map, so a new schema type never needs a release here.
+This package does **not** model schema.org — pass your own structs or a map,
+so a new schema type never waits on a release here.
 
 `JSONLD` escapes so a value cannot break out of the script element — there is
 a test named for exactly that, because `</script>` inside a string is the one
@@ -194,7 +194,7 @@ preview, err := fetcher.Fetch(ctx, submittedURL)
 A page with no metadata returns an empty `Preview` and **no error** — that is
 an ordinary page, and the caller shows the URL it would have shown anyway.
 
-### This is an SSRF surface, and that is the whole design
+### Fetching a URL somebody typed
 
 Fetching a URL somebody typed means making a request from inside your network
 to a destination they chose. Four things, and the first is the one most
@@ -222,10 +222,10 @@ the reserved and documentation ranges, and IPv4-mapped IPv6 forms of all of
 them — `::ffff:127.0.0.1` is loopback, and every `Is…` predicate answers false
 for it until it is unmapped.
 
-`AllowPrivateAddresses` turns the guard off. It exists so this package's own
-tests can reach an `httptest` server, and there is deliberately no way to
-allow a single address: the dangerous setting should not be the one you reach
-by narrowing a safe one.
+`AllowPrivateAddresses` turns the guard off, and exists so this package's own
+tests can reach an `httptest` server. There is no way to allow a single
+address, because then the dangerous setting would be the one you reach by
+narrowing a safe one.
 
 ### What it does not do
 
@@ -236,7 +236,7 @@ unfurler sees, and why sites that care ship the tags server-side.
 It adds **no modules**: `golang.org/x/net` was already in this module's graph,
 and the parser is a tokenizer that stops at `</head>` rather than a tree.
 
-## Deliberate omissions
+## Limitations
 
 No OG image generation, no hreflang, no AMP. Each is a project rather than a
 feature, and none of them is needed for a public page to be indexed correctly.
