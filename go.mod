@@ -3,7 +3,7 @@ module github.com/lemmego/seo
 go 1.27
 
 require (
-	github.com/lemmego/api v0.6.3
+	github.com/lemmego/api v0.11.0
 	github.com/lemmego/apptest v0.2.5
 	github.com/lemmego/inertia v0.2.4
 	golang.org/x/net v0.50.0

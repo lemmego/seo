@@ -72,6 +72,16 @@ func (d Defaults) apply(m Meta) Meta {
 	}
 	if m.Locale == "" {
 		m.Locale = d.Locale
+	} else if sameLanguage(m.Locale, d.Locale) && len(d.Locale) > len(m.Locale) {
+		// The request negotiated "en" and the site declares "en_US". Open
+		// Graph asks for language_TERRITORY, so the default is the same
+		// language said more precisely and should win — where a request in a
+		// different language must not be overridden by it at all.
+		//
+		// Without this rule, threading the request's locale through would
+		// quietly downgrade every English page from en_US to en, which is a
+		// less specific claim and nobody's intent.
+		m.Locale = d.Locale
 	}
 	if m.Image == "" {
 		m.Image = d.DefaultImage
@@ -174,4 +184,20 @@ func writeMeta(b *strings.Builder, attr, key, content string) {
 // the five characters that matter in an attribute context.
 func escape(s string) string {
 	return template.HTMLEscapeString(s)
+}
+
+// sameLanguage reports whether two og:locale values name the same language,
+// ignoring the territory.
+func sameLanguage(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return language(a) == language(b)
+}
+
+func language(locale string) string {
+	if i := strings.IndexAny(locale, "_-"); i >= 0 {
+		return locale[:i]
+	}
+	return locale
 }

@@ -437,3 +437,71 @@ func (s *fixedSource) Page(_ context.Context, offset, limit int) ([]URL, error) 
 	}
 	return s.urls[offset:end], nil
 }
+
+// TestOpenGraphLocaleUsesTheUnderscoreForm.
+//
+// og:locale asks for language_TERRITORY, and a hyphen there is not an error
+// anybody reports — the scraper ignores the tag and the card loses its
+// language. The tag a request negotiates is "en-US", so this is the one place
+// in this module where what was negotiated is not what is emitted.
+func TestOpenGraphLocaleUsesTheUnderscoreForm(t *testing.T) {
+	for tag, want := range map[string]string{
+		"en-US": "en_US",
+		"pt-BR": "pt_BR",
+		"fr":    "fr",
+		"":      "",
+	} {
+		if got := OpenGraphLocale(tag); got != want {
+			t.Errorf("OpenGraphLocale(%q) = %q, want %q", tag, got, want)
+		}
+	}
+}
+
+// TestADefaultLocaleIsEmittedAndAPageCanOverrideIt.
+//
+// Defaults is a boot-time value in the container, so Defaults.Locale is the
+// site's one fallback and can never be per-request. The per-page value is
+// what a negotiated locale becomes, which is why Share fills it from
+// c.Locale() when the page left it blank.
+func TestADefaultLocaleIsEmittedAndAPageCanOverrideIt(t *testing.T) {
+	defaults := Defaults{BaseURL: "https://example.test", Locale: "en_US"}
+
+	head := string(defaults.apply(Meta{Title: "A page"}).Render())
+	if !strings.Contains(head, `property="og:locale" content="en_US"`) {
+		t.Errorf("the default locale was not emitted:\n%s", head)
+	}
+
+	head = string(defaults.apply(Meta{Title: "A page", Locale: "fr_FR"}).Render())
+	if !strings.Contains(head, `property="og:locale" content="fr_FR"`) {
+		t.Errorf("the page's own locale did not win:\n%s", head)
+	}
+
+	// And with neither set, no tag at all rather than a guess.
+	head = string(Defaults{BaseURL: "https://example.test"}.apply(Meta{Title: "A page"}).Render())
+	if strings.Contains(head, "og:locale") {
+		t.Errorf("an og:locale was emitted with nothing configured:\n%s", head)
+	}
+}
+
+// TestTheDefaultSuppliesTheTerritoryForTheSameLanguage.
+//
+// A request negotiates a BCP 47 tag, which is often language-only ("en",
+// "fr"), while og:locale asks for language_TERRITORY. So threading the
+// request's locale through would otherwise downgrade every English page from
+// the site's declared en_US to a bare en — less specific, and nobody's
+// intent. A request in another language must still win outright.
+func TestTheDefaultSuppliesTheTerritoryForTheSameLanguage(t *testing.T) {
+	defaults := Defaults{BaseURL: "https://example.test", Locale: "en_US"}
+
+	for _, tc := range []struct{ request, want string }{
+		{"en", "en_US"},    // same language, said more precisely
+		{"en_GB", "en_GB"}, // already specific: the request knows better
+		{"fr", "fr"},       // another language: never overridden
+		{"", "en_US"},      // nothing translating: the site's default
+	} {
+		got := defaults.apply(Meta{Title: "A page", Locale: tc.request}).Locale
+		if got != tc.want {
+			t.Errorf("request %q -> %q, want %q", tc.request, got, tc.want)
+		}
+	}
+}

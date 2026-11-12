@@ -1,6 +1,8 @@
 package seo
 
 import (
+	"strings"
+
 	"github.com/lemmego/api/app"
 	"github.com/lemmego/inertia"
 )
@@ -29,6 +31,9 @@ const TemplateKey = "seoHead"
 // Call it immediately before inertia.Respond.
 func Share(c app.Context, m Meta) {
 	defaults, _ := app.Lookup[Defaults](c.App())
+	if m.Locale == "" {
+		m.Locale = OpenGraphLocale(c.Locale())
+	}
 	rendered := defaults.apply(m).Render()
 	c.SetRequest(c.Request().WithContext(
 		inertia.SetTemplateDatum(c.RequestContext(), TemplateKey, rendered),
@@ -45,4 +50,20 @@ func Middleware() app.Handler {
 		Share(c, Meta{Canonical: c.Request().URL.Path})
 		return c.Next()
 	}
+}
+
+// OpenGraphLocale converts a BCP 47 language tag to the form og:locale wants.
+//
+// Open Graph asks for language_TERRITORY with an underscore — "en_US", not
+// "en-US" — which is the one place in this module where the tag a request
+// negotiated is not the tag that gets emitted. A hyphen there is not a
+// validation error anybody reports; the scraper simply ignores it.
+//
+// An empty tag stays empty, so the per-page value falls through to
+// Defaults.Locale and then to no tag at all. That matters because Defaults is
+// a boot-time value in the container, shared by every request: it can only
+// ever carry the site's one fallback language, which is why a per-request
+// locale has to be resolved here instead.
+func OpenGraphLocale(tag string) string {
+	return strings.ReplaceAll(tag, "-", "_")
 }
